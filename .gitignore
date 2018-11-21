@@ -2,7 +2,3 @@
 *.t3d
 *.zip
 *.class
-java-te-sr/flow/*.out
-java-te-sr/flow/*.json
-java-te-sr/topology/*.out
-java-te-sr/topology/*.json
