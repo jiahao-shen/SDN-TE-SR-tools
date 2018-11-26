@@ -26,6 +26,7 @@ import java.util.Arrays;
 public class Main {
 
     public static void main(String[] args) {
+        //获取运行参数
         CMDParams params = Utils.parseCMD(args);
         String topo = params.get(Utils.CMDPARAMS_TOPO_IN);    //获取links.json文件路径
         String outTopo = params.get(Utils.CMDPARAMS_TOPO_OUT);    //获取out_links.json文件路径
@@ -35,35 +36,37 @@ public class Main {
 
         boolean DEBUG = Boolean.parseBoolean(params.get(Utils.CMDPARAMS_DEBUG));    //是否开启debug模式
 
-        //Graph Builder
+        //拓扑图构建
         GraphFactory gf = new GraphFactory();
         gf.loadTopologyCatalogueFromJSONFile(topo); //从links.json文件加载Graph
         gf.buildGraphStreamTopology();
-        GraphFactory.displayPoorGraph(gf.getGraph(), false);
+        //GraphFactory.displayPoorGraph(gf.getGraph(), false);    //绘制Topology
 
-        //Traffic Flow Generator
+        //Traffic Flow构建
         TrafficFlowFactory tff = new TrafficFlowFactory();
         tff.loadFlowCatalogueFromJSONFile(flows);   //从flow_catalogue.json加载Traffic Flow
         if (DEBUG) {
             System.out.println("Flows #: " + tff.getTrafficFlows().size());
         }
 
-        long deltaFlowAssignment;
-        long deltaSegmentRouting;
+        long deltaFlowAssignment;   //流分配计算时间
+        long deltaSegmentRouting;   //SegmentRouting计算时间
 
-        // Flow Assignment Algorithm
+        //流量分配算法
         FlowAssignmentAlgorithm faa = new FlowAssignmentAlgorithm();    //流量分配算法
         faa.init(gf.getGraph());    //初始化Topology
         faa.setTrafficFlows(tff.getTrafficFlows()); //设置Traffic Flow
         deltaFlowAssignment = System.currentTimeMillis();
-        faa.compute();
+        faa.compute();  //计算
         deltaFlowAssignment = System.currentTimeMillis() - deltaFlowAssignment;
-        faa.terminate();
+        faa.terminate();    //结束
 
-        Graph finalGraph = faa.getUpdatedGraph();
-        TrafficFlowContainer finalTrafficFlowAssignment = faa.getFlowAssignment();
+        Graph finalGraph = faa.getUpdatedGraph();   //分配后的拓扑图
+        TrafficFlowContainer finalTrafficFlowAssignment = faa.getFlowAssignment();  //获取流量分配
 
         //GraphFactory.displayGraphWithFlows(finalGraph, finalTrafficFlowAssignment, false);
+
+        //如果是Debug模式则输出对应的流分配信息
         if (DEBUG) {
             System.out.println();
             System.out.println("FLOW ALLOCATION");
@@ -86,21 +89,22 @@ public class Main {
             System.out.println();
         }
 
-        // Segment Routing Algorithm
+        //Segments计算
         if (DEBUG) {
             System.out.println();
             System.out.println("SEGMENT ROUTING ALLOCATION");
         }
 
+        //对每条流生成对应的Segments
         SegmentRoutingCatalogue srCatalogue = new SegmentRoutingCatalogue();
         deltaSegmentRouting = System.currentTimeMillis();
-        for (FlowElement fe : finalTrafficFlowAssignment) {
-            Path assignedPath = fe.getPath();
-            Path naturalPath = SegmentRouting.getNaturalPath(gf.getGraph(), fe.getNodeSource(), fe.getNodeDestination());
+        for (FlowElement fe : finalTrafficFlowAssignment) { //遍历每一个Flow
+            Path assignedPath = fe.getPath();   //获取分配路径
+            Path naturalPath = SegmentRouting.getNaturalPath(gf.getGraph(), fe.getNodeSource(), fe.getNodeDestination());   //获取自然路径
             try {
-                Node[] segments = SegmentRouting.getSegments(gf.getGraph(), assignedPath);
+                Node[] segments = SegmentRouting.getSegments(gf.getGraph(), assignedPath);  //获取Segments
                 srCatalogue.addSegmentRoutingElement(fe, naturalPath, segments);
-                tff.addSegmentsToTrafficFlow(fe, segments);
+                tff.addSegmentsToTrafficFlow(fe, segments); //给每一个Flow添加Segment Catalogue
             } catch (Exception e) {
                 e.printStackTrace();
                 srCatalogue.addSegmentRoutingElement(fe, naturalPath, new Node[0]);
@@ -109,6 +113,7 @@ public class Main {
         }
         deltaSegmentRouting = System.currentTimeMillis() - deltaSegmentRouting;
 
+        //打印每个Flow对应的Assigned Path,Natural Path and Segments
         if (DEBUG) {
             int countFlows = 0;
             for (FlowElement fe : srCatalogue.getFlowElements()) {
@@ -132,18 +137,19 @@ public class Main {
             System.out.println("Flows #: " + countFlows);
         }
 
-        // Write topology on JSON file (new version)
+        //输出拓扑保存到JSON文件中
         gf.saveTopologyToTopologyCatalogue(finalGraph, srCatalogue, outTopo);
 
-        // Write traffic flow on JSON file (new version)
+        //输出Traffic Flow到JSON文件中
         tff.saveTrafficFlowToFlowCatalogue(srCatalogue, outFlows);
 
+        //输出算法所花的时间
         if (DEBUG) {
             System.out.println("FlowAssignment Time: " + deltaFlowAssignment + "ms");
             System.out.println("SegmentRouting Time: " + deltaSegmentRouting + "ms");
 
-            BenchmarkFactory.histogram(srCatalogue, Integer.toString(gf.getGraph().getNodeCount()), Integer.toString(tff.getTrafficFlows().size()));
-            BenchmarkFactory.average(srCatalogue);
+            //BenchmarkFactory.histogram(srCatalogue, Integer.toString(gf.getGraph().getNodeCount()), Integer.toString(tff.getTrafficFlows().size()));
+            //BenchmarkFactory.average(srCatalogue);
         }
     }
 
