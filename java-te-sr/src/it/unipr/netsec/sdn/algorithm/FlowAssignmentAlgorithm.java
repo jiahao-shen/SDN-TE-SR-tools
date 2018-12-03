@@ -6,7 +6,9 @@ package it.unipr.netsec.sdn.algorithm;
  *
  */
 
+import it.unipr.netsec.sdn.graph.GraphFactory;
 import it.unipr.netsec.sdn.graph.util.GraphConstant;
+import it.unipr.netsec.sdn.trafficflow.TrafficFlowFactory;
 import it.unipr.netsec.sdn.trafficflow.element.FlowElement;
 import it.unipr.netsec.sdn.trafficflow.element.TrafficFlowContainer;
 import org.graphstream.algorithm.Dijkstra;
@@ -21,6 +23,7 @@ import org.graphstream.stream.SinkAdapter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 
 /**
  * Traffic Flow Assignment algorithm implementation
@@ -41,11 +44,6 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
 
     private boolean directedEdge = true;    //是否是有向图
 
-    /**
-     * 传入拓扑图并完成相应的初始化
-     *
-     * @param graph
-     */
     @Override
     public void init(Graph graph) {
         g = graphCopy(graph, graph.getId() + "_INIT");
@@ -65,8 +63,8 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
         boolean iterate = true;
 
         while (iterate) {
-            for (int ii = 0; ii < partialFlows.size(); ii++) {
-                flowAllocationLoop(partialFlows.get(ii));
+            for (FlowElement partialFlow : partialFlows) {
+                flowAllocationLoop(partialFlow);
             }
 
             iterate = timesComparison();
@@ -124,44 +122,41 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
      * First FLOW ALLOCATION
      */
     private void initialFlowAllocation() {
-        inner = graphCopy(g, g.getId() + "_INNER"); //拷贝g
+        inner = graphCopy(g, g.getId() + "_INNER"); //将g拷贝给inner
 
-        double BIGK = 0.0;  //所有链路的最大带宽
+        double BIGK = 0.0;  //所有边的最大容量
 
-        for (Edge e : inner.getEdgeSet()) { //遍历inner的链路集
-            double nominalCapacity = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_CAPACITY); //获取当前链路带宽
-            BIGK = Math.max(BIGK, nominalCapacity); //求解最大带宽
-        }
-
-        HashMap<String, TrafficFlowContainer> edgesUtilization = new HashMap<>();   //构建Hash表用来存放链路带宽的使用情况
-        for (Edge e : inner.getEdgeSet()) {
+        HashMap<String, TrafficFlowContainer> edgesUtilization = new HashMap<>();   //构建Hash表用来存放边的使用情况
+        for (Edge e : inner.getEdgeSet()) { //遍历inner的边集
+            double nominalCapacity = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_CAPACITY); //获取当前边的容量
+            BIGK = Math.max(BIGK, nominalCapacity); //求解最大容量
             String key = "(" + e.getSourceNode().getId() + "," + e.getTargetNode().getId() + ")";   //以(source,target)作为key
             edgesUtilization.put(key, new TrafficFlowContainer());  //每组(source,target)构建TrafficFlowContainer
         }
 
-        for (FlowElement f : flows) {   //遍历Flows
+        for (FlowElement f : flows) {   //遍历flows
             Graph innerTMP = new MultiGraph("TMPGraph");    //生成临时图innerTMP
             for (Node node : inner.getNodeSet()) {  //遍历inner的节点集
-                Node n = innerTMP.addNode(node.getId());    //将inner中的点集添加到innerTMP中
+                Node n = innerTMP.addNode(node.getId());    //将inner中的节点集添加到innerTMP中
                 for (String attribute : node.getAttributeKeySet()) {    //遍历该点的所有属性key
                     n.addAttribute(attribute, node.getAttribute(attribute));    //将该点的所有属性添加到innerTMP中
                 }
             }
 
-            for (Edge e : inner.getEdgeSet()) { //遍历inner的链路集
-                double nominalCapacity = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_CAPACITY); //获取该链路的带宽
-                double load = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);    //获取链路的负载
-                double residualCapacity = nominalCapacity - load;   //剩余带宽=带宽-负载
+            for (Edge e : inner.getEdgeSet()) { //遍历inner的边集
+                double nominalCapacity = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_CAPACITY); //获取该边的容量
+                double load = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);    //获取该边的负载
+                double residualCapacity = nominalCapacity - load;   //剩余容量=容量-负载
 
-                double linkCost = BIGK / residualCapacity;  //链路的权值=最大带宽/剩余带宽
+                double linkCost = BIGK / residualCapacity;  //边的权值=最大容量/剩余剩余
 
-                e.addAttribute(GraphConstant.ATTRIBUTE_EDGE_COST, linkCost);    //链路添加权值属性
+                e.addAttribute(GraphConstant.ATTRIBUTE_EDGE_COST, linkCost);    //给每条边添加权值cost
 
                 double flowBW = f.getBandwidth();   //获取当前flow的带宽
-                if ((residualCapacity - flowBW) >= 0.0) {   //如果剩余带宽比flow的带宽来的大
-                    Edge eTmp = innerTMP.addEdge(e.getId(), e.getSourceNode().getId(), e.getTargetNode().getId(), this.directedEdge);   //则将该链路添加到innerTMP中去
+                if ((residualCapacity - flowBW) >= 0.0) {   //如果剩余容量大于flow的带宽
+                    Edge eTmp = innerTMP.addEdge(e.getId(), e.getSourceNode().getId(), e.getTargetNode().getId(), this.directedEdge);   //则将该边添加到innerTMP中去
                     for (String attribute : e.getAttributeKeySet()) {
-                        eTmp.addAttribute(attribute, e.getAttribute(attribute));    //同时将该链路的全部属性拷贝过去
+                        eTmp.addAttribute(attribute, e.getAttribute(attribute));    //同时将该边的全部属性拷贝过去
                     }
                 }
             }
@@ -169,9 +164,9 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
             Node source = innerTMP.getNode(f.getNodeSource());  //获取当前flow的source节点
 
 			/*
-			  构造Dijkstra对象
-			  该Dijkstra是以source生成的Shortest Path Tree
-			  以链路权值作为长度
+			 * 构造Dijkstra对象
+			 * 该Dijkstra是以source生成的Shortest Path Tree
+			 * 以边的权值作为长度
 			 */
             Dijkstra d = new Dijkstra(Dijkstra.Element.EDGE, "result", GraphConstant.ATTRIBUTE_EDGE_COST);
             d.init(innerTMP);   //把innerTMP带入并初始化
@@ -180,14 +175,14 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
 
             Node dest = innerTMP.getNode(f.getNodeDestination());   //获取当前flow的destination节点
 
-            String path = "";
-            for (Edge pathEdge : d.getPathEdges(dest)) {    //遍历从source到destination的最短路径上的链路
+//            String path = "";
+            for (Edge pathEdge : d.getPathEdges(dest)) {    //遍历从source到destination的最短路径上的所有边
                 double load = inner.getEdge(pathEdge.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);    //获取当前边的负载
                 load += f.getBandwidth();    //负载加上flow带宽
                 inner.getEdge(pathEdge.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);    //inner中对应的边更新负载
                 String key = "(" + pathEdge.getSourceNode().getId() + "," + pathEdge.getTargetNode().getId() + ")";
-                path = "," + key + path;    //将该边加入到path中
-                edgesUtilization.get(key).add(f);    //hash表中存储对应的链路带宽使用情况
+//                path = "," + key + path;    //将该边加入到path中
+                edgesUtilization.get(key).add(f);    //该边的使用中添加当前flow
             }
 
             f.setPath(d.getPath(dest));    //对应的flow设置path
@@ -204,14 +199,14 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
             innerTMP.clear();
         }
 
-        for (Edge e : g.getEdgeSet()) {        //遍历g的链路集
-            String key = "(" + e.getSourceNode().getId() + "," + e.getTargetNode().getId() + ")";    //获取key
-            if (edgesUtilization.get(key) != null) {    //如果该链路已经是使用过
+        for (Edge e : g.getEdgeSet()) {        //遍历g的边集
+            String key = "(" + e.getSourceNode().getId() + "," + e.getTargetNode().getId() + ")";    //获取(source,target)作为key
+            if (edgesUtilization.get(key) != null) {    //如果该边已经使用过
                 double count = 0;
-                for (FlowElement fe : edgesUtilization.get(key)) {
-                    count += fe.getBandwidth();     //则求出该链路上的总带宽
+                for (FlowElement fe : edgesUtilization.get(key)) {  //遍历所有经过该边的flow
+                    count += fe.getBandwidth();     //则求出该边上的总带宽
                 }
-                e.addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, count);   //更新该链路的负载
+                e.addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, count);   //更新该边的负载
             }
         }
     }
@@ -232,14 +227,14 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
 		}
 		*/
         for (FlowElement f : partialFlows) {
-            sigma += f.getBandwidth();
+            sigma += f.getBandwidth();  //对partialFlows中的所有带宽求和
         }
 
         double localTglob = 0.0;
         for (Edge e : graph.getEdgeSet()) {
             double capacity = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_CAPACITY);
             double load = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
-            localTglob += load / (capacity - load);
+            localTglob += load / (capacity - load); //负载除以剩余带宽
         }
 
         localTglob = (1 / sigma) * localTglob;
@@ -274,7 +269,7 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
         }
 
         // Prune edges that doesn't support the current flow
-        ArrayList<Edge> pruned = new ArrayList<Edge>();
+        ArrayList<Edge> pruned = new ArrayList<>();
         for (Edge e : tmp.getEdgeSet()) {
             double capacity = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_CAPACITY);
             double load = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);

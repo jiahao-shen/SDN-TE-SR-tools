@@ -31,7 +31,7 @@ public class Utils {
 	 * @return the file content, in a HashMap-like way
 	 */
 	public static HashMap<String, Object> readJSONFile(String jsonFile) {
-		HashMap<String, Object> f = null;
+		HashMap f = null;
 		try {
 			BufferedReader br = new BufferedReader(new FileReader(jsonFile));
 			f = new Gson().fromJson(br, HashMap.class);

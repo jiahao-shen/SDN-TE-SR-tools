@@ -40,7 +40,7 @@ public class Main {
         GraphFactory gf = new GraphFactory();
         gf.loadTopologyCatalogueFromJSONFile(topo); //从links.json文件加载Graph
         gf.buildGraphStreamTopology();
-        //GraphFactory.displayPoorGraph(gf.getGraph(), false);    //绘制Topology
+//        GraphFactory.displayPoorGraph(gf.getGraph(), false);    //绘制Topology
 
         //Traffic Flow构建
         TrafficFlowFactory tff = new TrafficFlowFactory();
@@ -64,7 +64,7 @@ public class Main {
         Graph finalGraph = faa.getUpdatedGraph();   //分配后的拓扑图
         TrafficFlowContainer finalTrafficFlowAssignment = faa.getFlowAssignment();  //获取流量分配
 
-        //GraphFactory.displayGraphWithFlows(finalGraph, finalTrafficFlowAssignment, false);
+        GraphFactory.displayGraphWithFlows(finalGraph, finalTrafficFlowAssignment, false);  //显示分配后的拓扑图
 
         //如果是Debug模式则输出对应的流分配信息
         if (DEBUG) {
@@ -96,14 +96,14 @@ public class Main {
         }
 
         //对每条流生成对应的Segments
-        SegmentRoutingCatalogue srCatalogue = new SegmentRoutingCatalogue();
+        SegmentRoutingCatalogue srCatalogue = new SegmentRoutingCatalogue();    //段路由策略
         deltaSegmentRouting = System.currentTimeMillis();
         for (FlowElement fe : finalTrafficFlowAssignment) { //遍历每一个Flow
             Path assignedPath = fe.getPath();   //获取分配路径
             Path naturalPath = SegmentRouting.getNaturalPath(gf.getGraph(), fe.getNodeSource(), fe.getNodeDestination());   //获取自然路径
             try {
                 Node[] segments = SegmentRouting.getSegments(gf.getGraph(), assignedPath);  //获取Segments
-                srCatalogue.addSegmentRoutingElement(fe, naturalPath, segments);
+                srCatalogue.addSegmentRoutingElement(fe, naturalPath, segments);    //添加段路由元素
                 tff.addSegmentsToTrafficFlow(fe, segments); //给每一个Flow添加Segment Catalogue
             } catch (Exception e) {
                 e.printStackTrace();
