@@ -6,9 +6,7 @@ package it.unipr.netsec.sdn.algorithm;
  *
  */
 
-import it.unipr.netsec.sdn.graph.GraphFactory;
 import it.unipr.netsec.sdn.graph.util.GraphConstant;
-import it.unipr.netsec.sdn.trafficflow.TrafficFlowFactory;
 import it.unipr.netsec.sdn.trafficflow.element.FlowElement;
 import it.unipr.netsec.sdn.trafficflow.element.TrafficFlowContainer;
 import org.graphstream.algorithm.Dijkstra;
@@ -23,7 +21,6 @@ import org.graphstream.stream.SinkAdapter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Map;
 
 /**
  * Traffic Flow Assignment algorithm implementation
@@ -32,11 +29,11 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
 
     private boolean terminate = false;
 
-    private Graph g = null; //拓扑图
-    private Graph inner = null;
+    private Graph g = null; //感觉g并没有什么用
+    private Graph inner = null; //感觉inner才是主要的
 
     private TrafficFlowContainer flows = null;  //Traffic Flows
-    private TrafficFlowContainer partialFlows = null;
+    private TrafficFlowContainer partialFlows = null;   //已经分配的Flows(带有Path)
 
     private double sigma = 0.0;
     private double Tglob = 0.0;
@@ -163,11 +160,11 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
 
             Node source = innerTMP.getNode(f.getNodeSource());  //获取当前flow的source节点
 
-			/*
-			 * 构造Dijkstra对象
-			 * 该Dijkstra是以source生成的Shortest Path Tree
-			 * 以边的权值作为长度
-			 */
+            /*
+             * 构造Dijkstra对象
+             * 该Dijkstra是以source生成的Shortest Path Tree
+             * 以边的权值作为长度
+             */
             Dijkstra d = new Dijkstra(Dijkstra.Element.EDGE, "result", GraphConstant.ATTRIBUTE_EDGE_COST);
             d.init(innerTMP);   //把innerTMP带入并初始化
             d.setSource(source);    //设置source节点
@@ -199,6 +196,7 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
             innerTMP.clear();
         }
 
+        //g貌似没有什么大用
         for (Edge e : g.getEdgeSet()) {        //遍历g的边集
             String key = "(" + e.getSourceNode().getId() + "," + e.getTargetNode().getId() + ")";    //获取(source,target)作为key
             if (edgesUtilization.get(key) != null) {    //如果该边已经使用过
@@ -220,21 +218,16 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
      */
     private double averageDelayCalculation(Graph graph) {
         sigma = 0.0;
-		
-		/*
-		for (FlowElement f : flows) {
-			sigma += f.getBandwidth();
-		}
-		*/
+
         for (FlowElement f : partialFlows) {
             sigma += f.getBandwidth();  //对partialFlows中的所有带宽求和
         }
 
         double localTglob = 0.0;
-        for (Edge e : graph.getEdgeSet()) {
+        for (Edge e : graph.getEdgeSet()) { //遍历graph的边集
             double capacity = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_CAPACITY);
             double load = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
-            localTglob += load / (capacity - load); //负载除以剩余带宽
+            localTglob += load / (capacity - load); //负载除以剩余带宽求和
         }
 
         localTglob = (1 / sigma) * localTglob;
@@ -262,7 +255,8 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
         Graph tmp = graphCopy(inner, inner.getId() + "_STEP567");
 
         // Deallocate current flow from temporary graph
-        for (Edge e : cfe.getPath().getEdgeSet()) {
+        for (Edge e : cfe.getPath().getEdgeSet()) { //遍历当前流的路径
+            // 先把将tmp图中的当前流删去
             double load = tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
             load = load - cfe.getBandwidth();
             tmp.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
@@ -270,67 +264,76 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
 
         // Prune edges that doesn't support the current flow
         ArrayList<Edge> pruned = new ArrayList<>();
-        for (Edge e : tmp.getEdgeSet()) {
+        for (Edge e : tmp.getEdgeSet()) {   //遍历tmp边集
             double capacity = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_CAPACITY);
             double load = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
             load += cfe.getBandwidth();
-            if (capacity <= load) {
-                pruned.add(e);
-                tmp.removeEdge(e);
+            if (capacity <= load) { //如果tmp的当前边加上当前流的带宽大于当前边的容量
+                pruned.add(e);  //则pruned添加该边
+                tmp.removeEdge(e);  //tmp删除该边
             }
         }
 
         // Edge length calculation, with the UniRoma2 formula
-        for (Edge e : tmp.getEdgeSet()) {
+        for (Edge e : tmp.getEdgeSet()) {   //遍历tmp边集
             double capacity = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_CAPACITY);
             double load = e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
             double length = capacity / (Math.pow(capacity - load, 2));
-            length = (1 / sigma) * length;
+            length = (1 / sigma) * length;  //每条边添加一个length属性
             e.addAttribute(GraphConstant.ATTRIBUTE_EDGE_LENGTH, length);
         }
 
-        Node source = tmp.getNode(cfe.getNodeSource());
+        Node source = tmp.getNode(cfe.getNodeSource()); //获取当前flow的source节点
 
         // CSPF --> Dijkstra
+        /*
+         * 以length为权值生成Dijkstra对象
+         * source为源
+         * tmp为图
+         */
         Dijkstra d = new Dijkstra(Dijkstra.Element.EDGE, "result", GraphConstant.ATTRIBUTE_EDGE_LENGTH);
         d.init(tmp);
         d.setSource(source);
         d.compute();
 
-        Node dest = tmp.getNode(cfe.getNodeDestination());
+        Node dest = tmp.getNode(cfe.getNodeDestination());  //获取当前flow的dest节点
 
         int count = 0;
-        for (Path p : d.getAllPaths(dest)) {
+        for (Path ignored : d.getAllPaths(dest)) {    //计算从source到dest的路径数目
             count++;
         }
 
-        Path path = cfe.getPath();
+        Path path = cfe.getPath();  //获取当前flow先前生成的path
         double pathLength = 0.0;
-        for (Edge e : path.getEdgeSet()) {
+        for (Edge e : path.getEdgeSet()) {  //求出该path上所有边的length之和
             pathLength += (double) tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LENGTH);
         }
 
-        if (count > 1) {
-            for (Path p : d.getAllPaths(dest)) {
+        if (count > 1) {    //如果从source到dest的路径大于1
+            //获取最短length的path
+            for (Path p : d.getAllPaths(dest)) {    //遍历从source到dest的路径
                 double pl = 0.0;
-                for (Edge e : p.getEdgeSet()) {
+                for (Edge e : p.getEdgeSet()) {     //求解当前路径的路径长度pl
                     pl += (double) tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LENGTH);
                 }
 
-                if ((pl < pathLength) && (!pathEquals(p, path))) {
+                if ((pl < pathLength) && (!pathEquals(p, path))) {  //如果pl小于pathLength
+                    //更新path和pathLength
                     path = p;
                     pathLength = pl;
                 }
             }
 
             // Sum discovered path to temporary graph
-            for (Edge e : path.getEdgeSet()) {
-                double load = tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
-                load += cfe.getBandwidth();
-                tmp.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
+            // 将该最短路作为当前flow的路径
+            for (Edge e : path.getEdgeSet()) {  //遍历该最短路上的边
+                double load = tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);   //获取当前边的负载
+                load += cfe.getBandwidth(); //负载加上flow带宽
+                tmp.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);   //更新tmp中的负载
             }
 
             // BEFORE re-calculate the delay time, re-add previously pruned edges to temporary graph
+            // 将之前从tmp中删除的边包括其属性再添加回去
             for (Edge e : pruned) {
                 Edge ne = tmp.addEdge(e.getId(), e.getSourceNode(), e.getTargetNode(), this.directedEdge);
                 for (String keyAttribute : e.getAttributeKeySet()) {
@@ -338,11 +341,12 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
                 }
             }
 
-            double localTglob = averageDelayCalculation(tmp);
-            if (localTglob < Tfin) {
-                finalTimeAllocation(localTglob);
+            double localTglob = averageDelayCalculation(tmp);   //重新计算平均延迟
+            if (localTglob < Tfin) {    //如果延迟变小了
+                finalTimeAllocation(localTglob);    //则更新延迟
 
                 // Delete OLD path for the current flow from the graph
+                // 从inner中将原来该flow的路径删除
                 for (Edge e : cfe.getPath().getEdgeSet()) {
                     double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
                     load -= cfe.getBandwidth();
@@ -350,6 +354,7 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
                 }
 
                 // Add NEW path for the current flow to the graph
+                // 将新求解出来的path作为当前flow的路径添加到inner中
                 for (Edge e : path.getEdgeSet()) {
                     double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
                     load += cfe.getBandwidth();
@@ -357,7 +362,7 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
                 }
 
                 // Add NEW path to the current flow
-                cfe.setPath(path);
+                cfe.setPath(path);  //当前flow更新path
             }
         } else {
             Path found = d.getPath(dest);
@@ -426,6 +431,14 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
         return true;
     }
 
+
+    /**
+     * Check whether path1 == path2
+     *
+     * @param p1
+     * @param p2
+     * @return True or False
+     */
     private static boolean pathEquals(Path p1, Path p2) {
         if (p1.size() != p2.size()) {
             return false;
@@ -442,6 +455,13 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
         return true;
     }
 
+    /**
+     * Copy Graph
+     *
+     * @param graph
+     * @param name
+     * @return Graph
+     */
     private Graph graphCopy(Graph graph, String name) {
         Graph cpy = new MultiGraph(name);
 
