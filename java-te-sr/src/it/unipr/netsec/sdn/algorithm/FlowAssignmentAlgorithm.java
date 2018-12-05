@@ -298,10 +298,10 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
 
         Node dest = tmp.getNode(cfe.getNodeDestination());  //获取当前flow的dest节点
 
-        int count = 0;
-        for (Path ignored : d.getAllPaths(dest)) {    //计算从source到dest的路径数目
-            count++;
-        }
+//        int count = 0;
+//        for (Path ignored : d.getAllPaths(dest)) {    //计算从source到dest的路径数目
+//            count++;
+//        }
 
         Path path = cfe.getPath();  //获取当前flow先前生成的path
         double pathLength = 0.0;
@@ -309,112 +309,159 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
             pathLength += (double) tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LENGTH);
         }
 
-        if (count > 1) {    //如果从source到dest的路径大于1
-            //获取最短length的path
-            for (Path p : d.getAllPaths(dest)) {    //遍历从source到dest的路径
-                double pl = 0.0;
-                for (Edge e : p.getEdgeSet()) {     //求解当前路径的路径长度pl
-                    pl += (double) tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LENGTH);
-                }
+        //自己写的等效算法
+        for (Path p : d.getAllPaths(dest)) {
+            double pl = 0.0;
 
-                if ((pl < pathLength) && (!pathEquals(p, path))) {  //如果pl小于pathLength
-                    //更新path和pathLength
-                    path = p;
-                    pathLength = pl;
-                }
+            for (Edge e: p.getEdgeSet()) {
+                pl += (double) tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LENGTH);
             }
 
-            // Sum discovered path to temporary graph
-            // 将该最短路作为当前flow的路径
-            for (Edge e : path.getEdgeSet()) {  //遍历该最短路上的边
-                double load = tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);   //获取当前边的负载
-                load += cfe.getBandwidth(); //负载加上flow带宽
-                tmp.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);   //更新tmp中的负载
-            }
-
-            // BEFORE re-calculate the delay time, re-add previously pruned edges to temporary graph
-            // 将之前从tmp中删除的边包括其属性再添加回去
-            for (Edge e : pruned) {
-                Edge ne = tmp.addEdge(e.getId(), e.getSourceNode(), e.getTargetNode(), this.directedEdge);
-                for (String keyAttribute : e.getAttributeKeySet()) {
-                    ne.addAttribute(keyAttribute, e.getAttribute(keyAttribute));
-                }
-            }
-
-            double localTglob = averageDelayCalculation(tmp);   //重新计算平均延迟
-            if (localTglob < Tfin) {    //如果延迟变小了
-                finalTimeAllocation(localTglob);    //则更新Tfin
-
-                // Delete OLD path for the current flow from the graph
-                // 从inner中将原来该flow的路径删除
-                for (Edge e : cfe.getPath().getEdgeSet()) {
-                    double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
-                    load -= cfe.getBandwidth();
-                    inner.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
-                }
-
-                // Add NEW path for the current flow to the graph
-                // 将新求解出来的path作为当前flow的路径添加到inner中
-                for (Edge e : path.getEdgeSet()) {
-                    double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
-                    load += cfe.getBandwidth();
-                    inner.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
-                }
-
-                // Add NEW path to the current flow
-                cfe.setPath(path);  //当前flow更新path
-            }
-        } else {    //如果从source到dest的路径只有一条
-            Path found = d.getPath(dest);   //获取该路径found
-            double dijkstraPathLength = 0.0;
-            for (Edge e : found.getEdgeSet()) { //救出该路径的总length
-                dijkstraPathLength += (double) e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_LENGTH);
-            }
-
-            if (dijkstraPathLength < pathLength) {  //如果该路径比先前生成的pathLength小
-                // Sum discovered path to temporary graph
-                for (Edge e : found.getEdgeSet()) { //则将found作为当前flow的路径
-                    double load = tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
-                    load += cfe.getBandwidth();
-                    tmp.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);   //更新tmp中的负载
-                }
-
-                // BEFORE re-calculate the delay time, re-add previously pruned edges to temporary graph
-                // 将之前删除的边包括属性添加回tmp
-                for (Edge e : pruned) {
-                    Edge ne = tmp.addEdge(e.getId(), e.getSourceNode(), e.getTargetNode(), this.directedEdge);
-                    for (String keyAttribute : e.getAttributeKeySet()) {
-                        ne.addAttribute(keyAttribute, e.getAttribute(keyAttribute));
-                    }
-                }
-
-                double localTglob = averageDelayCalculation(tmp);   //计算平均延迟
-                if (localTglob < Tfin) {    //如果延迟变小了
-                    finalTimeAllocation(localTglob);    //则更新Tfin
-
-                    // Delete OLD path for the current flow from the graph
-                    // 将旧的path从inner中删除
-                    for (Edge e : path.getEdgeSet()) {
-                        double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
-                        load -= cfe.getBandwidth();
-                        inner.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
-                    }
-
-                    // Add NEW path for the current flow to the graph
-                    // 将新生成的found路径加入到inner中
-                    for (Edge e : found.getEdgeSet()) {
-                        double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
-                        load += cfe.getBandwidth();
-                        inner.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
-                    }
-
-                    // Add NEW path to the current flow
-                    cfe.setPath(found); //将found作为当前flow的路径
-                    path = found;
-                    pathLength = dijkstraPathLength;
-                }
+            if ((pl < pathLength) && (!pathEquals(p, path))) {
+                path = p;
+                pathLength = pl;
             }
         }
+
+        for (Edge e : path.getEdgeSet()) {
+            double load = tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
+            load += cfe.getBandwidth();
+            tmp.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
+        }
+
+        for (Edge e : pruned) {
+            Edge ne = tmp.addEdge(e.getId(), e.getSourceNode(), e.getTargetNode(), this.directedEdge);
+            for (String keyAttribute : e.getAttributeKeySet()) {
+                ne.addAttribute(keyAttribute, e.getAttribute(keyAttribute));
+            }
+        }
+
+        double localTglob = averageDelayCalculation(tmp);
+        if (!pathEquals(path, cfe.getPath()) && localTglob < Tfin) {
+            finalTimeAllocation(localTglob);
+
+            for (Edge e : cfe.getPath().getEdgeSet()) {
+                double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
+                load -= cfe.getBandwidth();
+                inner.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
+            }
+
+            for (Edge e : path.getEdgeSet()) {
+                double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
+                load += cfe.getBandwidth();
+                inner.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
+            }
+
+            cfe.setPath(path);
+        }
+
+        //原来的算法
+//        if (count > 1) {    //如果从source到dest的路径大于1
+//            //获取最短length的path
+//            for (Path p : d.getAllPaths(dest)) {    //遍历从source到dest的路径
+//                double pl = 0.0;
+//                for (Edge e : p.getEdgeSet()) {     //求解当前路径的路径长度pl
+//                    pl += (double) tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LENGTH);
+//                }
+//
+//                if ((pl < pathLength) && (!pathEquals(p, path))) {  //如果pl小于pathLength
+//                    //更新path和pathLength
+//                    path = p;
+//                    pathLength = pl;
+//                }
+//            }
+//
+//            // Sum discovered path to temporary graph
+//            // 将该最短路作为当前flow的路径
+//            for (Edge e : path.getEdgeSet()) {  //遍历该最短路上的边
+//                double load = tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);   //获取当前边的负载
+//                load += cfe.getBandwidth(); //负载加上flow带宽
+//                tmp.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);   //更新tmp中的负载
+//            }
+//
+//            // BEFORE re-calculate the delay time, re-add previously pruned edges to temporary graph
+//            // 将之前从tmp中删除的边包括其属性再添加回去
+//            for (Edge e : pruned) {
+//                Edge ne = tmp.addEdge(e.getId(), e.getSourceNode(), e.getTargetNode(), this.directedEdge);
+//                for (String keyAttribute : e.getAttributeKeySet()) {
+//                    ne.addAttribute(keyAttribute, e.getAttribute(keyAttribute));
+//                }
+//            }
+//
+//            double localTglob = averageDelayCalculation(tmp);   //重新计算平均延迟
+//            if (localTglob < Tfin) {    //如果延迟变小了
+//                finalTimeAllocation(localTglob);    //则更新Tfin
+//
+//                // Delete OLD path for the current flow from the graph
+//                // 从inner中将原来该flow的路径删除
+//                for (Edge e : cfe.getPath().getEdgeSet()) {
+//                    double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
+//                    load -= cfe.getBandwidth();
+//                    inner.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
+//                }
+//
+//                // Add NEW path for the current flow to the graph
+//                // 将新求解出来的path作为当前flow的路径添加到inner中
+//                for (Edge e : path.getEdgeSet()) {
+//                    double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
+//                    load += cfe.getBandwidth();
+//                    inner.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
+//                }
+//
+//                // Add NEW path to the current flow
+//                cfe.setPath(path);  //当前flow更新path
+//            }
+//        } else {    //如果从source到dest的路径只有一条
+//            Path found = d.getPath(dest);   //获取该路径found
+//            double dijkstraPathLength = 0.0;
+//            for (Edge e : found.getEdgeSet()) { //救出该路径的总length
+//                dijkstraPathLength += (double) e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_LENGTH);
+//            }
+//
+//            if (dijkstraPathLength < pathLength) {  //如果该路径比先前生成的pathLength小
+//                // Sum discovered path to temporary graph
+//                for (Edge e : found.getEdgeSet()) { //则将found作为当前flow的路径
+//                    double load = tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
+//                    load += cfe.getBandwidth();
+//                    tmp.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);   //更新tmp中的负载
+//                }
+//
+//                // BEFORE re-calculate the delay time, re-add previously pruned edges to temporary graph
+//                // 将之前删除的边包括属性添加回tmp
+//                for (Edge e : pruned) {
+//                    Edge ne = tmp.addEdge(e.getId(), e.getSourceNode(), e.getTargetNode(), this.directedEdge);
+//                    for (String keyAttribute : e.getAttributeKeySet()) {
+//                        ne.addAttribute(keyAttribute, e.getAttribute(keyAttribute));
+//                    }
+//                }
+//
+//                double localTglob = averageDelayCalculation(tmp);   //计算平均延迟
+//                if (localTglob < Tfin) {    //如果延迟变小了
+//                    finalTimeAllocation(localTglob);    //则更新Tfin
+//
+//                    // Delete OLD path for the current flow from the graph
+//                    // 将旧的path从inner中删除
+//                    for (Edge e : path.getEdgeSet()) {
+//                        double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
+//                        load -= cfe.getBandwidth();
+//                        inner.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
+//                    }
+//
+//                    // Add NEW path for the current flow to the graph
+//                    // 将新生成的found路径加入到inner中
+//                    for (Edge e : found.getEdgeSet()) {
+//                        double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
+//                        load += cfe.getBandwidth();
+//                        inner.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
+//                    }
+//
+//                    // Add NEW path to the current flow
+//                    cfe.setPath(found); //将found作为当前flow的路径
+//                    path = found;
+//                    pathLength = dijkstraPathLength;
+//                }
+//            }
+//        }
     }
 
     /**
