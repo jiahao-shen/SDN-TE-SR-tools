@@ -256,7 +256,7 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
 
         // Deallocate current flow from temporary graph
         for (Edge e : cfe.getPath().getEdgeSet()) { //遍历当前流的路径
-            // 先把将tmp图中的当前流删去
+            // 先把tmp图中的当前流删去
             double load = tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
             load = load - cfe.getBandwidth();
             tmp.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
@@ -343,7 +343,7 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
 
             double localTglob = averageDelayCalculation(tmp);   //重新计算平均延迟
             if (localTglob < Tfin) {    //如果延迟变小了
-                finalTimeAllocation(localTglob);    //则更新延迟
+                finalTimeAllocation(localTglob);    //则更新Tfin
 
                 // Delete OLD path for the current flow from the graph
                 // 从inner中将原来该flow的路径删除
@@ -364,22 +364,23 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
                 // Add NEW path to the current flow
                 cfe.setPath(path);  //当前flow更新path
             }
-        } else {
-            Path found = d.getPath(dest);
+        } else {    //如果从source到dest的路径只有一条
+            Path found = d.getPath(dest);   //获取该路径found
             double dijkstraPathLength = 0.0;
-            for (Edge e : found.getEdgeSet()) {
+            for (Edge e : found.getEdgeSet()) { //救出该路径的总length
                 dijkstraPathLength += (double) e.getAttribute(GraphConstant.ATTRIBUTE_EDGE_LENGTH);
             }
 
-            if (dijkstraPathLength < pathLength) {
+            if (dijkstraPathLength < pathLength) {  //如果该路径比先前生成的pathLength小
                 // Sum discovered path to temporary graph
-                for (Edge e : found.getEdgeSet()) {
+                for (Edge e : found.getEdgeSet()) { //则将found作为当前flow的路径
                     double load = tmp.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
                     load += cfe.getBandwidth();
-                    tmp.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);
+                    tmp.getEdge(e.getId()).addAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD, load);   //更新tmp中的负载
                 }
 
                 // BEFORE re-calculate the delay time, re-add previously pruned edges to temporary graph
+                // 将之前删除的边包括属性添加回tmp
                 for (Edge e : pruned) {
                     Edge ne = tmp.addEdge(e.getId(), e.getSourceNode(), e.getTargetNode(), this.directedEdge);
                     for (String keyAttribute : e.getAttributeKeySet()) {
@@ -387,11 +388,12 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
                     }
                 }
 
-                double localTglob = averageDelayCalculation(tmp);
-                if (localTglob < Tfin) {
-                    finalTimeAllocation(localTglob);
+                double localTglob = averageDelayCalculation(tmp);   //计算平均延迟
+                if (localTglob < Tfin) {    //如果延迟变小了
+                    finalTimeAllocation(localTglob);    //则更新Tfin
 
                     // Delete OLD path for the current flow from the graph
+                    // 将旧的path从inner中删除
                     for (Edge e : path.getEdgeSet()) {
                         double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
                         load -= cfe.getBandwidth();
@@ -399,6 +401,7 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
                     }
 
                     // Add NEW path for the current flow to the graph
+                    // 将新生成的found路径加入到inner中
                     for (Edge e : found.getEdgeSet()) {
                         double load = inner.getEdge(e.getId()).getAttribute(GraphConstant.ATTRIBUTE_EDGE_LOAD);
                         load += cfe.getBandwidth();
@@ -406,7 +409,7 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
                     }
 
                     // Add NEW path to the current flow
-                    cfe.setPath(found);
+                    cfe.setPath(found); //将found作为当前flow的路径
                     path = found;
                     pathLength = dijkstraPathLength;
                 }
@@ -421,14 +424,11 @@ public class FlowAssignmentAlgorithm extends SinkAdapter implements DynamicAlgor
      * @return TRUE if t_fin is lower than T_glob, FALSE otherwise.
      */
     private boolean timesComparison() {
-        if (Tfin < Tglob) {
-            Tglob = Tfin;
-            return true;
-        } else if (Tfin == Tglob) {
-            return false;
-        }
+        if (Tfin < Tglob) { //如果平均延迟变小了
+            Tglob = Tfin;   //则更新Tglob
+            return true;    //继续迭代
+        } else return !(Tfin == Tglob);
 
-        return true;
     }
 
 

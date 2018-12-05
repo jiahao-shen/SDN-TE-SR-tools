@@ -100,11 +100,11 @@ public class Main {
         deltaSegmentRouting = System.currentTimeMillis();
         for (FlowElement fe : finalTrafficFlowAssignment) { //遍历每一个Flow
             Path assignedPath = fe.getPath();   //获取分配路径
-            Path naturalPath = SegmentRouting.getNaturalPath(gf.getGraph(), fe.getNodeSource(), fe.getNodeDestination());   //获取自然路径
+            Path naturalPath = SegmentRouting.getNaturalPath(gf.getGraph(), fe.getNodeSource(), fe.getNodeDestination());   //获取一条等价的从source到dest的路径
             try {
                 Node[] segments = SegmentRouting.getSegments(gf.getGraph(), assignedPath);  //获取Segments
                 srCatalogue.addSegmentRoutingElement(fe, naturalPath, segments);    //添加段路由元素
-                tff.addSegmentsToTrafficFlow(fe, segments); //给每一个Flow添加Segment Catalogue
+                tff.addSegmentsToTrafficFlow(fe, segments); //给当前flow添加segments
             } catch (Exception e) {
                 e.printStackTrace();
                 srCatalogue.addSegmentRoutingElement(fe, naturalPath, new Node[0]);

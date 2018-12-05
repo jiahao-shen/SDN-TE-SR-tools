@@ -215,16 +215,18 @@ public class TrafficFlowFactory {
 	}
 	
 	public void addSegmentsToTrafficFlow(FlowElement fe, Node[] segments) {
-		for (String key : this.flowCatalogue.keySet()) {
-			FlowCatalogueElement fce = this.flowCatalogue.get(key);
-			String flowID = fce.getFeatures().getId();
-			if (fe.getId().contains(flowID)) {
-				ArrayList<String> segmentsArrayList = new ArrayList<String>();
-				for (int jj = 0;jj < segments.length; jj++) {
-					segmentsArrayList.add(segments[jj].getId());
+		for (String key : this.flowCatalogue.keySet()) {	//遍历flowCatalogue的键
+			FlowCatalogueElement fce = this.flowCatalogue.get(key);	//根据键获取element
+			String flowID = fce.getFeatures().getId();	//获取当前fce的features的id
+			if (fe.getId().contains(flowID)) {	//如果当前flow element的id包含flowID
+				ArrayList<String> segmentsArrayList = new ArrayList<>();
+				for (Node segment : segments) {
+					segmentsArrayList.add(segment.getId());	//则添加segments
 				}
 				
 				//if (fe.getId().contains("_in")) {
+                //对应的in设置路径
+				//设置分配位为true
 				if (fe.getRelationType().equals(FlowElement.IN)) {
 					fce.getFeatures().getIn().setPath(segmentsArrayList.toArray(new String[]{}));
 					fce.getFeatures().getIn().setAllocated(true);
@@ -232,6 +234,8 @@ public class TrafficFlowFactory {
 				}
 				
 				//if (fe.getId().contains("_out")) {
+                //对应的out设置路径
+				//设置分配位为true
 				if (fe.getRelationType().equals(FlowElement.OUT)) {
 					fce.getFeatures().getOut().setPath(segmentsArrayList.toArray(new String[]{}));
 					fce.getFeatures().getOut().setAllocated(true);
