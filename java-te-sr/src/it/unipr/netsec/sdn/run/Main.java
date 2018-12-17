@@ -64,7 +64,7 @@ public class Main {
         Graph finalGraph = faa.getUpdatedGraph();   //分配后的拓扑图
         TrafficFlowContainer finalTrafficFlowAssignment = faa.getFlowAssignment();  //获取流量分配
 
-//        GraphFactory.displayGraphWithFlows(finalGraph, finalTrafficFlowAssignment, false);  //显示分配后的拓扑图
+        GraphFactory.displayGraphWithFlows(finalGraph, finalTrafficFlowAssignment, false);  //显示分配后的拓扑图
 
         //如果是Debug模式则输出对应的流分配信息
         if (DEBUG) {
